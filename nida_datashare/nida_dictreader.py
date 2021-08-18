@@ -1,10 +1,25 @@
+import yaml
 import glob
 import json
 import csv
 import re
 from openpyxl import load_workbook
 
-def nida_raw_to_json(dicts_path, variable_metadata):
+'''
+colname_transforms - transforms the colnames in the source data dictionaries
+to the desired name in the final output.  Assumes homogeneity among all data
+dictionaries that are being transformed. It is a dictionary where the key is
+current name and value is desired name.
+
+'''
+colname_transforms = {
+    'FieldName': 'variable_id',
+    'Label': 'variable_name',
+    'Description': 'variable_description'
+}
+
+
+def nida_raw_to_json(dicts_path, variable_metadata, colname_transforms):
     '''
     Transforms the raw NIDA data and returns single JSON blob of roughly the
     following format:
@@ -55,6 +70,8 @@ def nida_raw_to_json(dicts_path, variable_metadata):
             
             # variable metadata
             rows = wb[sheet].rows
+            
+            # filter keys - only keep keys in colname_transforms
             keys = [k.internal_value for k in next(rows)]
             for iteration,row in enumerate(rows):
                 print(iteration)
@@ -91,6 +108,8 @@ def json_to_dbgap_xml(json_blob):
 
 dicts_path = "./inputs/"
 study_metadata = []
+
+# Import yaml here - transform to appropriate verbiage.
 
 # Get study metadata
 with open(f"{dicts_path}nida_study_metadata.csv") as csvfile:
