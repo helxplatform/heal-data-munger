@@ -1,97 +1,113 @@
-import yaml
+import argparse
 import glob
 import json
 import csv
 import re
 from openpyxl import load_workbook
+import xml.etree.ElementTree as ET
 
 '''
-colname_transforms - transforms the colnames in the source data dictionaries
-to the desired name in the final output.  Assumes homogeneity among all data
-dictionaries that are being transformed. It is a dictionary where the key is
-current name and value is desired name.
-
+This script will read in one file at a time, and transform into a dbGaP XML.
+Loops will be done outside the script, e.g. in a bash script that can be executed
+over multiple files.
+Option to keep the JSON intermediate.
 '''
-colname_transforms = {
-    'FieldName': 'variable_id',
-    'Label': 'variable_name',
-    'Description': 'variable_description'
-}
 
-
-def nida_raw_to_json(dicts_path, variable_metadata, colname_transforms):
+def main(args): 
     '''
-    Transforms the raw NIDA data and returns single JSON blob of roughly the
-    following format:
+    colname_transforms - transforms the colnames in the source data dictionaries
+    to the desired name in the final output.  Assumes homogeneity among all data
+    dictionaries that are being transformed. It is a dictionary where the key is
+    current name and value is desired name.
+
+    '''
+    colname_transforms = {
+        args.var_id_column: 'variable_id',
+        args.var_name_column: 'variable_name',
+        args.var_desc_column: 'variable_description'
+    }
+
+    # Transform to JSON
+    json_blob = nida_raw_to_json(data_dictionary = args.dd, study_id = args.study_id, colname_transforms = colname_transforms)
+
+    if args.generate_json:
+        filename = f"outputs/json/{args.study_id}.json"
+        with open(filename, "w") as stream:
+            json.dump(json_blob, stream)
+
+    for dataset in json_blob:
+        # Transform to dbGaP XML
+        filename = f"outputs/xml/{dataset['study_id']}.{dataset['dataset_id']}.xml"
+        dataset_xml = json_to_dbgap_xml(dataset)
+        # Format XML
+        ET.indent(dataset_xml)
+        # Write xml
+        dataset_xml.write(filename)
+
+def nida_raw_to_json(data_dictionary, study_id, colname_transforms):
+    '''
+    Transforms the raw NIDA data for a single study ID (multiple datasets) and 
+    returns single JSON blob of roughly the following format:
 
     [
         {
             "study_id": ,
-            "study_name": ,
-            "study_description": ,
-            ...,
-            "datasets": [
+            "dataset_id": ,
+            "dataset_name": ,
+            "variables": [
                 {
-                    "dataset_id": ,
-                    "dataset_name": ,
-                    "dataset_description": ,
-                    ...,
-                    variables: [
-                        {
-                            "variable_id": ,
-                            "variable_name": ,
-                            "variable_description": ,
-                            ...
-                        },
-                        ...,
-                    ]
-                }
+                    "variable_id": ,
+                    "variable_name": ,
+                    "variable_description":
+                },
             ]
-        }
+        },
+        ...
     ]
-
     '''
     json_blob = [] # initialize output json blob
    
-    for study in study_metadata:
-        new_study = study # initialize new study to save back
-        dict_filepath = f"{dicts_path}{study['data_dictionary_filename']}"
-        new_study.pop('data_dictionary_filename')
-        new_study['datasets'] = []
-        wb = load_workbook(dict_filepath) 
-        for sheet in wb.sheetnames:
-            dataset = {} # initialize dataset
+    wb = load_workbook(data_dictionary) 
+    for sheet in wb.sheetnames:
+        dataset = {} # initialize dataset
+        dataset['study_id'] = study_id
 
-            # dataset metadata
-            dataset_id = re.sub("[^a-z ]","",sheet.lower()).replace(" ","_")
-            dataset['dataset_id'] = dataset_id
-            dataset['dataset_name'] = sheet
-            dataset['variables'] = []
-            
-            # variable metadata
-            rows = wb[sheet].rows
-            
-            # filter keys - only keep keys in colname_transforms
-            keys = [k.internal_value for k in next(rows)]
-            for iteration,row in enumerate(rows):
-                print(iteration)
-                # Get values for each dictionary
-                values = [k.internal_value for k in row]
-                variable = {k:v for k,v in zip(keys, values)}
-                # variable id
-                if not 'variable_id' in variable:
-                    print("TODO")
-                # Append variable
-                dataset['variables'].append(variable)
-
-            # Append dataset
-            new_study['datasets'].append(dataset)
+        # dataset metadata
+        dataset_id = re.sub("[^a-z ]","",sheet.lower()).replace(" ","_")
+        dataset['dataset_id'] = dataset_id
+        dataset['dataset_name'] = sheet
+        dataset['variables'] = []
         
-        json_blob.append(new_study) # add to JSON blob
+        # variable metadata
+        rows = wb[sheet].rows
+        
+        # filter keys - only keep keys in colname_transforms
+        keys = [k.internal_value for k in next(rows)]
+        for iteration,row in enumerate(rows):
+
+            # Get values for each dictionary
+            values = [k.internal_value for k in row]
+
+            # Skip empty rows
+            if values[0] is None:
+                continue
+
+            variable = {k:v for k,v in zip(keys, values) if k in colname_transforms}
+            variable = {colname_transforms[k]:v for (k,v) in variable.items()}
+
+            # variable id missing?
+            if not 'variable_id' in variable:
+                variable['variable_id'] = f"{dataset_id}.v{iteration+1}"
+            
+            # Append variable
+            dataset['variables'].append(variable)
+
+        # Append dataset
+        json_blob.append(dataset)
     
     return(json_blob)
 
-def json_to_dbgap_xml(json_blob):
+def json_to_dbgap_xml(dataset):
     '''
     Transforms the JSON blob into a dbGaP XML format, e.g.:
 
@@ -104,24 +120,32 @@ def json_to_dbgap_xml(json_blob):
         <type>integer</type>
     </variable>
     '''
-    return(print("json_to_dbgap_xml"))
+    # Build root
+    root = ET.Element("data_table")
+    root.set("id",dataset["dataset_id"])
+    root.set("study_id",dataset["study_id"])
 
-dicts_path = "./inputs/"
-study_metadata = []
+    # Loop over each variable
+    for var_dict in dataset['variables']:
+        variable = ET.SubElement(root,"variable")
+        variable.set("id",var_dict['variable_id'])
+        name = ET.SubElement(variable, "name")
+        name.text = var_dict['variable_name']
+        desc = ET.SubElement(variable, "description")
+        desc.text = var_dict['variable_description']
 
-# Import yaml here - transform to appropriate verbiage.
+    return(ET.ElementTree(root))
 
-# Get study metadata
-with open(f"{dicts_path}nida_study_metadata.csv") as csvfile:
-    reader = csv.reader(csvfile)
-    keys = next(reader)
-    for row in reader:
-        d = {k:v for k,v in zip(keys,row)}
-        study_metadata.append(d)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Transform NIDA to JSON and/or dbGaP XML format")
+    parser.add_argument('dd', action="store", help= "Specify the file to convert")
+    parser.add_argument('study_id', action="store", help = "Specify the study ID")
+    parser.add_argument('-j', '--json', dest="generate_json", type=bool, default=True, action="store", help = "Produce intermediate JSON file?" )
 
-# Transform to JSON Blob
-json_blob = nida_raw_to_json(dicts_path, study_metadata)
+    # add column names
+    parser.add_argument('--var-id-column', dest="var_id_column", action="store", help = "Specify the column in the file which contains the variable ID")
+    parser.add_argument('--var-name-column', dest="var_name_column", action="store", help = "Specify the column in the file which contains the variable name")
+    parser.add_argument('--var-desc-column', dest="var_desc_column", action="store", help = "Specify the column in the file which contains the variable description")
 
-# Debug - write JSON blob
-with open(f"./outputs/output_json_blob.json", "w") as stream:
-    json.dump(json_blob, stream)
+    args = parser.parse_args()
+    main(args)
