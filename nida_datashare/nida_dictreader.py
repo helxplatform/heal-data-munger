@@ -30,18 +30,18 @@ def main(args):
     # Transform to JSON
     json_blob = nida_raw_to_json(data_dictionary = args.dd, study_id = args.study_id, colname_transforms = colname_transforms)
 
-    if args.generate_json:
-        filename = f"outputs/json/{args.study_id}.json"
+    if args.json_path:
+        filename = f"{args.json_path}/{args.study_id}.json"
         with open(filename, "w") as stream:
             json.dump(json_blob, stream)
 
     for dataset in json_blob:
         # Transform to dbGaP XML
-        filename = f"outputs/xml/{dataset['study_id']}.{dataset['dataset_id']}.xml"
         dataset_xml = json_to_dbgap_xml(dataset)
         # Format XML
         ET.indent(dataset_xml)
         # Write xml
+        filename = f"{args.output_path}/{dataset['study_id']}.{dataset['dataset_id']}.xml"
         dataset_xml.write(filename)
 
 def nida_raw_to_json(data_dictionary, study_id, colname_transforms):
@@ -140,7 +140,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Transform NIDA to JSON and/or dbGaP XML format")
     parser.add_argument('dd', action="store", help= "Specify the file to convert")
     parser.add_argument('study_id', action="store", help = "Specify the study ID")
-    parser.add_argument('-j', '--json', dest="generate_json", type=bool, default=True, action="store", help = "Produce intermediate JSON file?" )
+    parser.add_argument('output_path', action="store", help ="Specify absolute path for outputs")
+    parser.add_argument('-j', '--json', dest="json_path", action="store", help = "Specify JSON output path (optional)" )
 
     # add column names
     parser.add_argument('--var-id-column', dest="var_id_column", action="store", help = "Specify the column in the file which contains the variable ID")
