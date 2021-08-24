@@ -30,7 +30,7 @@ pip install -r requirements.txt
 ```
 
 ## Execute the Bash Script
-At the repository root, run `bash activate.sh` to run the bash script.
+At the repository root, run `bash convert.sh` to run the bash script.
 
 ### Bash Script Arguments
 The bash script is a wrapper for running the python script (`nida_dictreader.py`) on input data dictionary files with varying arguments.  To understand the arguments that can be specified, run `python3 nida_dictreader.py --help` at the command line.
