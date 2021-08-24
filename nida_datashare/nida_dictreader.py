@@ -21,11 +21,13 @@ def main(args):
     current name and value is desired name.
 
     '''
-    colname_transforms = {
-        args.var_id_column: 'variable_id',
-        args.var_name_column: 'variable_name',
-        args.var_desc_column: 'variable_description'
-    }
+    colname_transforms = {}
+    if args.var_id_column:
+        colname_transforms['variable_id'] = args.var_id_column
+    if args.var_name_column:
+        colname_transforms['variable_name'] = args.var_name_column
+    if args.var_desc_column:
+        colname_transforms['variable_description'] = args.var_desc_column
 
     # Transform to JSON
     json_blob = nida_raw_to_json(data_dictionary = args.dd, study_id = args.study_id, colname_transforms = colname_transforms)
@@ -92,15 +94,20 @@ def nida_raw_to_json(data_dictionary, study_id, colname_transforms):
             if values[0] is None:
                 continue
 
-            variable = {k:v for k,v in zip(keys, values) if k in colname_transforms}
-            variable = {colname_transforms[k]:v for (k,v) in variable.items()}
+            variable = {k:v for k,v in zip(keys, values) if k in [val for vals in colname_transforms.values() for val in vals]}
+            new_variable = {}
+
+            # Change key name
+            for v in variable:
+                new_key = [k for k in colname_transforms if v in colname_transforms[k]].pop()
+                new_variable[new_key] = variable[v]
 
             # variable id missing?
-            if not 'variable_id' in variable:
-                variable['variable_id'] = f"{dataset_id}.v{iteration+1}"
+            if not 'variable_id' in new_variable:
+                new_variable['variable_id'] = f"{dataset_id}.v{iteration+1}"
             
             # Append variable
-            dataset['variables'].append(variable)
+            dataset['variables'].append(new_variable)
 
         # Append dataset
         json_blob.append(dataset)
@@ -130,9 +137,9 @@ def json_to_dbgap_xml(dataset):
         variable = ET.SubElement(root,"variable")
         variable.set("id",var_dict['variable_id'])
         name = ET.SubElement(variable, "name")
-        name.text = var_dict['variable_name']
+        name.text = var_dict.get('variable_name',"")
         desc = ET.SubElement(variable, "description")
-        desc.text = var_dict['variable_description']
+        desc.text = var_dict.get('variable_description',"")
 
     return(ET.ElementTree(root))
 
@@ -144,9 +151,9 @@ if __name__ == "__main__":
     parser.add_argument('-j', '--json', dest="json_path", action="store", help = "Specify JSON output path (optional)" )
 
     # add column names
-    parser.add_argument('--var-id-column', dest="var_id_column", action="store", help = "Specify the column in the file which contains the variable ID")
-    parser.add_argument('--var-name-column', dest="var_name_column", action="store", help = "Specify the column in the file which contains the variable name")
-    parser.add_argument('--var-desc-column', dest="var_desc_column", action="store", help = "Specify the column in the file which contains the variable description")
+    parser.add_argument('--var-id-column', nargs="+", dest="var_id_column", action="store", help = "Specify the column(s) in the file which contains the variable ID")
+    parser.add_argument('--var-name-column', nargs="+", dest="var_name_column", action="store", help = "Specify the column(s) in the file which contains the variable name")
+    parser.add_argument('--var-desc-column', nargs="+", dest="var_desc_column", action="store", help = "Specify the column(s) in the file which contains the variable description")
 
     args = parser.parse_args()
     main(args)
