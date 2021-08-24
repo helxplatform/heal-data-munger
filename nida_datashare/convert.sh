@@ -25,7 +25,8 @@ python3 nida_dictreader.py $OUTPUT_BASE/inputs/MDS0002_DD.xlsx NIDA-MDS-0002 $OU
 python3 nida_dictreader.py $OUTPUT_BASE/inputs/MDS0003-Dictionary.xlsx NIDA-MDS-0003 $OUTPUT_BASE/outputs --var-id-column FieldName --var-id-column "Field Name" --var-name-column "Label"
 
 # Zip up XML files into a tar.gz
-tar -czvf $OUTPUT_BASE/outputs/nida_dicts.tar.gz `find $OUTPUT_BASE/outputs | egrep "*.xml"`
+tar -czvf nida_dicts.tar.gz -C $OUTPUT_BASE outputs `find outputs | egrep "*.xml"`
+mv $OUTPUT_BASE/nida_dicts.tar.gz $OUTPUT_BASE/outputs  
 
 # Clean up: delete individual XML files
 find $OUTPUT_BASE/outputs/*.xml -exec rm {} +
